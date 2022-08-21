@@ -1,0 +1,334 @@
+#include <stdio.h>
+#include <time.h>
+#include <sys/time.h>
+#include <dirent.h>
+#include <pthread.h>
+
+#include "lvgl.h"
+#include "nes_main.h"
+#include "gui_common.h"
+
+#define ICON_PATH   ("/root/assets/icon/")
+
+#define ICON_SIZE           (64)
+#define ICON_ROW_COUNT      (4)
+#define ICON_COLUNM_COUNT   (6)
+#define ICON_PAD_TOP        (40)
+#define ICON_PAD_BOTTOM     (40)
+#define ICON_PAD_LEFT       (115)
+#define ICON_PAD_RIGHT      (115)
+
+#define ICON_ROW_SPACE      (20)
+#define ICON_COL_SPACE      (40)//((ICON_HOR_RES - (ICON_SIZE * ICON_COLUNM_COUNT)) / (ICON_COLUNM_COUNT - 1))
+#define ICON_HOR_RES        (4 + (ICON_SIZE * ICON_COLUNM_COUNT) + (ICON_COL_SPACE * (ICON_COLUNM_COUNT - 1)))//((LV_HOR_RES - ICON_PAD_LEFT - ICON_PAD_RIGHT))        // 列间距
+#define ICON_VER_RES        (4 + (ICON_SIZE * ICON_ROW_COUNT) + (ICON_ROW_SPACE * (ICON_ROW_COUNT - 1)))//((LV_VER_RES - ICON_PAD_TOP  - ICON_PAD_BOTTOM))       // 行间距
+
+
+// 去掉最后的后缀名
+void strip_ext(char *fname)
+{
+    char *end = fname + strlen(fname);
+
+    while (end > fname && *end != '.') {
+        --end;
+    }
+
+    if (end > fname) {
+        *end = '\0';
+    }
+}
+
+
+static void gui_img_set_zoom(lv_obj_t * obj_img, uint32_t obj_width, uint32_t obj_height)
+{
+    lv_img_t * img = (lv_img_t *)obj_img;
+    if (obj_img == NULL)
+    {
+        printf("[%s:%d] param errror\n", __FUNCTION__, __LINE__);
+        return;
+    }
+ 
+    if (obj_width == 0 || obj_height == 0)
+    {
+        printf("[%s:%d] param errror\n", __FUNCTION__, __LINE__);
+        return;
+    }
+ 
+    uint32_t img_width = 0, img_height = 0, zoom_factor = 0;
+    img_width = img->w;
+    img_height = img->h;
+ 
+    if (img_width != 0 && img_height != 0)
+    {
+        uint32_t y_a= obj_height * img_width;   
+        uint32_t x_b= obj_width * img_height;
+ 
+        if (x_b >= y_a)
+        {
+            if (img_height >= obj_height)
+            {
+                uint32_t x = obj_height << 8;
+                zoom_factor = x / img_height;
+                lv_img_set_zoom(obj_img, zoom_factor);
+            }
+        }
+        else
+        {
+            if (img_width > obj_width)
+            {
+                uint32_t x = obj_width << 8;
+                zoom_factor = x / img_width;
+                lv_img_set_zoom(obj_img, zoom_factor);
+            }
+        }
+    }
+}
+
+static void lv_timer_update_time(lv_timer_t * timer)
+{
+    lv_obj_t * label = timer->user_data;
+
+    // 获取系统时间
+    char buf[32];
+    time_t rawtime;
+    struct tm *info;
+    time(&rawtime);
+    info = localtime(&rawtime);
+
+    lv_label_set_text_fmt(label, "   %02d:%02d  %02d-%02d-%02d", info->tm_hour, info->tm_min, (info->tm_year + 2000 - 100), (info->tm_mon + 1), info->tm_mday);
+}
+
+char* thread_run_game(void* arg)
+{
+	GUI_HOMEPAGE_T *hp_data = (GUI_HOMEPAGE_T *)arg;
+
+	usleep(100*1000);
+	nes_load(hp_data->rom_path);
+
+	lv_scr_load(hp_data->def_scr);
+
+	return NULL;
+}
+
+static void event_clicked_handler(lv_event_t * e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    lv_obj_t *obj = lv_event_get_target(e);
+	GUI_HOMEPAGE_T *hp_data = lv_event_get_user_data(e);
+
+    if(code == LV_EVENT_CLICKED)
+	{
+        char * file_name = lv_label_get_text(lv_obj_get_child(obj, 0));
+		sprintf(hp_data->rom_path, "/home/rom/%s", file_name);
+        printf("rom_name: %s\n", hp_data->rom_path);
+	
+//		lv_indev_enable(lv_event_get_indev(e), false);
+
+#if 0
+		printf("creat thread\r\n");
+		lv_scr_load(hp_data->game_scr);
+		pthread_t tid;
+		if (pthread_create(&tid, (void*)hp_data, (void*)thread_run_game, "GameEmulator") != 0)
+		{
+	        printf("pthread_create error.");
+	        exit(EXIT_FAILURE);
+	    }
+#else
+		nes_load(hp_data->rom_path);
+		lv_obj_invalidate(hp_data->def_scr);
+#endif
+    }
+}
+
+static void event_key_handler(lv_event_t * e)
+{
+	uint32_t k = lv_event_get_key(e);
+	lv_group_t *g = lv_obj_get_group(lv_event_get_target(e));
+
+	printf("key=%d\r\n", k);
+	if(k == LV_KEY_RIGHT)
+	{
+		lv_group_focus_next(g);
+	}
+	else if(k == LV_KEY_LEFT)
+	{
+		lv_group_focus_prev(g);
+	}
+		
+
+}
+
+static void gui_top_widgets(lv_obj_t * parent)
+{
+    static lv_style_t obj_layout_style;   // 容器的样式
+
+    lv_style_init(&obj_layout_style);
+    lv_style_set_pad_all(&obj_layout_style, 0);
+    lv_style_set_bg_opa(&obj_layout_style, LV_OPA_0);
+    lv_style_set_text_font(&obj_layout_style, &lv_font_montserrat_16);
+    lv_style_set_border_opa(&obj_layout_style, LV_OPA_0);
+    lv_style_set_radius(&obj_layout_style, 0);
+    lv_style_set_text_color(&obj_layout_style, lv_color_hex(0xffffff));
+
+    /* Layout Init */
+    lv_obj_t * panel = lv_obj_create(parent);
+    lv_obj_set_size(panel,  LV_PCT(100), 30);
+    lv_obj_add_style(panel, &obj_layout_style, 0);
+    lv_obj_align(panel, LV_ALIGN_TOP_MID, 0, 5);
+
+    /* 右上角小图标 */
+    lv_obj_t * panel_icon = lv_obj_create(panel);
+    lv_obj_set_size(panel_icon,  200, 25);
+    lv_obj_set_layout(panel_icon, LV_LAYOUT_FLEX);
+    lv_obj_set_style_base_dir(panel_icon, LV_BASE_DIR_RTL, 0);
+    lv_obj_set_flex_flow(panel_icon, LV_FLEX_FLOW_ROW);
+    lv_obj_align(panel_icon, LV_ALIGN_RIGHT_MID, 0, 0);
+    lv_obj_add_style(panel_icon, &obj_layout_style, 0);
+
+    lv_obj_t * label = lv_label_create(panel_icon);
+    lv_label_set_text(label,  " ");
+
+    lv_obj_t * label_bat = lv_label_create(panel_icon);
+    lv_label_set_text(label_bat,  LV_SYMBOL_BATTERY_EMPTY);
+
+    lv_obj_t * label_batchar = lv_label_create(label_bat);
+    lv_obj_set_style_text_font(label_batchar, &lv_font_montserrat_14, 0);
+    lv_label_set_text(label_batchar,  LV_SYMBOL_CHARGE);
+    lv_obj_center(label_batchar);
+
+
+    lv_obj_t * label_wifi = lv_label_create(panel_icon);
+    lv_label_set_text(label_wifi, LV_SYMBOL_WIFI);
+
+    lv_obj_t * label_time = lv_label_create(panel);
+    lv_label_set_text(label_time, "  ");
+    lv_obj_align(label_time, LV_ALIGN_LEFT_MID, 0, 0);
+
+    lv_timer_t * timer = lv_timer_create(lv_timer_update_time, 1000,  label_time);
+}
+
+
+int gui_homepage_init(GUI_HOMEPAGE_T *hp_data, lv_indev_t *key_indev)
+{
+	int ret = 0;
+	lv_obj_t * img_icon;
+	lv_obj_t *btn_icon;
+	lv_obj_t *label;
+	char file_name[64] = {0};
+	struct dirent *de;
+	DIR *dr;
+
+	hp_data->game_grp = lv_group_create();
+    hp_data->bottom_grp = lv_group_create();
+	lv_indev_set_group(key_indev, hp_data->game_grp);
+//    lv_indev_set_group(key_indev, hp_data->bottom_grp);
+
+	hp_data->def_scr = lv_scr_act();
+//	hp_data->game_scr = lv_obj_create(NULL);
+
+	/* 设置容器的样式 */
+	lv_style_init(&hp_data->cont_style);
+    lv_style_set_bg_opa(&hp_data->cont_style, LV_OPA_0);
+    lv_style_set_border_opa(&hp_data->cont_style, LV_OPA_0);
+    lv_style_set_pad_column(&hp_data->cont_style, ICON_COL_SPACE);
+    lv_style_set_pad_row(&hp_data->cont_style, ICON_ROW_SPACE);
+    lv_style_set_pad_all(&hp_data->cont_style, 0);
+
+
+	/* 容器中的图标的样式 */
+	lv_style_init(&hp_data->icon_style);
+    lv_style_set_bg_opa(&hp_data->icon_style, LV_OPA_100);
+    lv_style_set_border_opa(&hp_data->icon_style, LV_OPA_0);
+    lv_style_set_text_opa(&hp_data->icon_style, LV_OPA_0);
+    lv_style_set_text_font(&hp_data->icon_style,  &lv_font_montserrat_8);
+    lv_style_set_text_color(&hp_data->icon_style, lv_color_white()); //设置字体颜色
+	lv_style_set_border_color(&hp_data->icon_style, lv_color_white()); // 设置边框颜色
+    lv_style_set_border_opa(&hp_data->icon_style, LV_OPA_50); // 设置边框透明度
+    lv_style_set_border_width(&hp_data->icon_style, 3); // 设置边框宽度
+	lv_style_set_radius(&hp_data->icon_style, 5);
+
+    /* 屏幕顶部状态栏区域 */
+    gui_top_widgets(hp_data->def_scr);
+
+	/* 中间图标区域 */
+    lv_obj_t * icon_cont = lv_obj_create(hp_data->def_scr);
+    lv_obj_set_size(icon_cont, LV_PCT(100), 320);
+    lv_obj_set_layout(icon_cont, LV_LAYOUT_FLEX);
+    lv_obj_set_style_base_dir(icon_cont, LV_BASE_DIR_LTR, 0);
+    lv_obj_set_flex_flow(icon_cont, LV_FLEX_FLOW_ROW);
+    lv_obj_set_y(icon_cont, 70);
+    lv_obj_add_style(icon_cont, &hp_data->cont_style, 0);
+
+    /* 底部面板区域 */
+    lv_style_init(&hp_data->bottom_panel_style);
+    lv_style_set_pad_all(&hp_data->bottom_panel_style, 0);
+    lv_style_set_bg_opa(&hp_data->bottom_panel_style, LV_OPA_50);
+    lv_style_set_pad_left(&hp_data->bottom_panel_style, 10);
+    lv_style_set_pad_right(&hp_data->bottom_panel_style, 10);
+
+    //lv_style_set_shadow_opa(&hp_data->bottom_panel_style, 0);
+    lv_style_set_border_opa(&hp_data->bottom_panel_style, LV_OPA_0);
+    lv_style_set_radius(&hp_data->bottom_panel_style, 22);
+
+    /* Layout Init */
+    lv_obj_t * bottom_panel = lv_obj_create(hp_data->def_scr);
+    lv_obj_set_size(bottom_panel,  LV_PCT(70), 80);
+    lv_obj_add_style(bottom_panel, &hp_data->bottom_panel_style, 0);
+    lv_obj_set_layout(bottom_panel, LV_LAYOUT_FLEX);
+    //lv_obj_set_style_base_dir(bottom_panel, LV_BASE_DIR_RTL, 0);
+    lv_obj_set_flex_flow(bottom_panel, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(bottom_panel, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER);
+    lv_obj_align(bottom_panel, LV_ALIGN_BOTTOM_MID, 0, -15);
+
+	lv_obj_t * img_bg;
+	img_bg = lv_img_create(hp_data->def_scr);
+	lv_img_set_src(img_bg, "/home/.sys/wallpaper/bg1.png");
+	lv_obj_move_background(img_bg);  // 将背景移动到后台
+
+	dr = opendir("/home/rom");
+	if (dr == NULL)  // opendir returns NULL if couldn't open directory
+    {
+        printf("Could not open current directory!\n");
+        return 0;
+    }
+
+	while ((de = readdir(dr)) != NULL)
+	{
+		if((strcmp(de->d_name,".") == 0)  ||\
+           (strcmp(de->d_name,"..") == 0) ||\
+           ((strcmp((de->d_name + (strlen(de->d_name) - 4)) , ".nes") != 0)&&\
+           (strcmp((de->d_name + (strlen(de->d_name) - 4)) , ".NES") != 0)))
+		{
+			continue;
+		}
+
+		btn_icon = lv_btn_create(icon_cont);
+		lv_obj_set_size(btn_icon, 256, 240);
+	    lv_obj_add_event_cb(btn_icon, event_clicked_handler, LV_EVENT_CLICKED, hp_data);
+	    lv_obj_add_event_cb(btn_icon, event_key_handler, LV_EVENT_KEY, hp_data);
+	    lv_obj_add_style(btn_icon, &hp_data->icon_style, 0);
+		lv_obj_add_flag(btn_icon, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+		lv_group_add_obj(hp_data->game_grp, btn_icon);
+		
+		label = lv_label_create(btn_icon); //创建名称
+		lv_label_set_text(label, de->d_name);
+		lv_obj_set_align(label, LV_ALIGN_OUT_BOTTOM_MID);
+		
+		strip_ext(de->d_name);
+		sprintf(file_name, "/home/rom/%s.png", de->d_name);
+		img_icon = lv_img_create(btn_icon);
+		lv_img_set_src(img_icon, file_name);
+		gui_img_set_zoom(img_icon, 256, 240);
+		lv_obj_center(img_icon);
+
+	}
+	closedir(dr);		
+
+	lv_group_set_editing(hp_data->game_grp,false);//导航模式
+	lv_group_set_wrap(hp_data->game_grp, true);
+//	lv_group_focus_obj(btn_icon);
+
+
+	return ret;
+}
+
