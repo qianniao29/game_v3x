@@ -35,6 +35,7 @@ typedef struct {
     lv_style_t cont_style;              // 中间图标区域，容器的样式
     lv_style_t icon_style;              // 中间图标区域，容器中的图标的样式
     lv_style_t bottom_panel_style;  // 底部容器的样式
+    lv_style_t bottom_scrollbar_style;
     lv_obj_t * game_scr;
     lv_obj_t * def_scr;
     char       rom_path[ROM_NAME_MAX];

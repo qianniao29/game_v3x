@@ -1,14 +1,20 @@
 #include <stdio.h>
+#include <unistd.h>
 #include <time.h>
 #include <sys/time.h>
 #include <dirent.h>
 #include <pthread.h>
+#include <fcntl.h>
 
 #include "lvgl.h"
 #include "nes_main.h"
 #include "gui_common.h"
 
-#define ICON_PATH   ("/root/assets/icon/")
+#define SYS_ICON_PATH   ("/home/.sys/icon/")
+#define SYS_BG_PATH     ("/home/.sys/wallpaper/")
+#define ROM_PATH		("/home/rom/")
+#define SYS_ICON_LOAD_FAILED   ("/home/.sys/icon/loadfailed.png")
+
 
 #define ICON_SIZE           (64)
 #define ICON_ROW_COUNT      (4)
@@ -23,6 +29,15 @@
 #define ICON_HOR_RES        (4 + (ICON_SIZE * ICON_COLUNM_COUNT) + (ICON_COL_SPACE * (ICON_COLUNM_COUNT - 1)))//((LV_HOR_RES - ICON_PAD_LEFT - ICON_PAD_RIGHT))        // 列间距
 #define ICON_VER_RES        (4 + (ICON_SIZE * ICON_ROW_COUNT) + (ICON_ROW_SPACE * (ICON_ROW_COUNT - 1)))//((LV_VER_RES - ICON_PAD_TOP  - ICON_PAD_BOTTOM))       // 行间距
 
+
+const char bottom_menu_png_list[][64] = {
+	"calendar.png",
+	"picture_explore.png",
+	"music_player.png",
+	"video_play.png",
+	"setting.png",
+	""
+};
 
 // 去掉最后的后缀名
 void strip_ext(char *fname)
@@ -119,7 +134,7 @@ static void event_clicked_handler(lv_event_t * e)
     if(code == LV_EVENT_CLICKED)
 	{
         char * file_name = lv_label_get_text(lv_obj_get_child(obj, 0));
-		sprintf(hp_data->rom_path, "/home/rom/%s", file_name);
+		sprintf(hp_data->rom_path, "%s%s", ROM_PATH, file_name);
         printf("rom_name: %s\n", hp_data->rom_path);
 	
 //		lv_indev_enable(lv_event_get_indev(e), false);
@@ -168,12 +183,12 @@ static void gui_top_widgets(lv_obj_t * parent)
     lv_style_set_text_font(&obj_layout_style, &lv_font_montserrat_16);
     lv_style_set_border_opa(&obj_layout_style, LV_OPA_0);
     lv_style_set_radius(&obj_layout_style, 0);
-    lv_style_set_text_color(&obj_layout_style, lv_color_hex(0xffffff));
+    lv_style_set_text_color(&obj_layout_style, lv_color_white());
 
     /* Layout Init */
     lv_obj_t * panel = lv_obj_create(parent);
     lv_obj_set_size(panel,  LV_PCT(100), 30);
-    lv_obj_add_style(panel, &obj_layout_style, 0);
+    lv_obj_add_style(panel, &obj_layout_style, LV_PART_MAIN|LV_STATE_DEFAULT);
     lv_obj_align(panel, LV_ALIGN_TOP_MID, 0, 5);
 
     /* 右上角小图标 */
@@ -183,7 +198,7 @@ static void gui_top_widgets(lv_obj_t * parent)
     lv_obj_set_style_base_dir(panel_icon, LV_BASE_DIR_RTL, 0);
     lv_obj_set_flex_flow(panel_icon, LV_FLEX_FLOW_ROW);
     lv_obj_align(panel_icon, LV_ALIGN_RIGHT_MID, 0, 0);
-    lv_obj_add_style(panel_icon, &obj_layout_style, 0);
+    lv_obj_add_style(panel_icon, &obj_layout_style, LV_PART_MAIN|LV_STATE_DEFAULT);
 
     lv_obj_t * label = lv_label_create(panel_icon);
     lv_label_set_text(label,  " ");
@@ -217,6 +232,7 @@ int gui_homepage_init(GUI_HOMEPAGE_T *hp_data, lv_indev_t *key_indev)
 	char file_name[64] = {0};
 	struct dirent *de;
 	DIR *dr;
+	uint32_t i = 0;
 
 	hp_data->game_grp = lv_group_create();
     hp_data->bottom_grp = lv_group_create();
@@ -238,14 +254,28 @@ int gui_homepage_init(GUI_HOMEPAGE_T *hp_data, lv_indev_t *key_indev)
 	/* 容器中的图标的样式 */
 	lv_style_init(&hp_data->icon_style);
     lv_style_set_bg_opa(&hp_data->icon_style, LV_OPA_100);
-    lv_style_set_border_opa(&hp_data->icon_style, LV_OPA_0);
+	lv_style_set_bg_color(&hp_data->icon_style, lv_palette_lighten(LV_PALETTE_GREY,1));
     lv_style_set_text_opa(&hp_data->icon_style, LV_OPA_0);
     lv_style_set_text_font(&hp_data->icon_style,  &lv_font_montserrat_8);
     lv_style_set_text_color(&hp_data->icon_style, lv_color_white()); //设置字体颜色
-	lv_style_set_border_color(&hp_data->icon_style, lv_color_white()); // 设置边框颜色
-    lv_style_set_border_opa(&hp_data->icon_style, LV_OPA_50); // 设置边框透明度
-    lv_style_set_border_width(&hp_data->icon_style, 3); // 设置边框宽度
+//    lv_style_set_border_opa(&hp_data->icon_style, LV_OPA_0);
+//	lv_style_set_border_color(&hp_data->icon_style, lv_color_white()); // 设置边框颜色
+//    lv_style_set_border_opa(&hp_data->icon_style, LV_OPA_50); // 设置边框透明度
+//    lv_style_set_border_width(&hp_data->icon_style, 3); // 设置边框宽度
 	lv_style_set_radius(&hp_data->icon_style, 5);
+
+	/* 底部面板样式 */
+    lv_style_init(&hp_data->bottom_panel_style);
+    lv_style_set_pad_all(&hp_data->bottom_panel_style, 0);
+    lv_style_set_bg_opa(&hp_data->bottom_panel_style, LV_OPA_50);
+	lv_style_set_pad_column(&hp_data->bottom_panel_style, -10);
+	lv_style_set_pad_top(&hp_data->bottom_panel_style, 5);
+    lv_style_set_border_opa(&hp_data->bottom_panel_style, LV_OPA_0);
+    lv_style_set_radius(&hp_data->bottom_panel_style, 22);
+
+	/* 不显示滚动条 */
+	lv_style_init(&hp_data->bottom_scrollbar_style);
+	lv_style_set_opa(&hp_data->bottom_scrollbar_style, LV_OPA_0);
 
     /* 屏幕顶部状态栏区域 */
     gui_top_widgets(hp_data->def_scr);
@@ -257,23 +287,14 @@ int gui_homepage_init(GUI_HOMEPAGE_T *hp_data, lv_indev_t *key_indev)
     lv_obj_set_style_base_dir(icon_cont, LV_BASE_DIR_LTR, 0);
     lv_obj_set_flex_flow(icon_cont, LV_FLEX_FLOW_ROW);
     lv_obj_set_y(icon_cont, 70);
-    lv_obj_add_style(icon_cont, &hp_data->cont_style, 0);
+    lv_obj_add_style(icon_cont, &hp_data->cont_style, LV_PART_MAIN|LV_STATE_DEFAULT);
 
     /* 底部面板区域 */
-    lv_style_init(&hp_data->bottom_panel_style);
-    lv_style_set_pad_all(&hp_data->bottom_panel_style, 0);
-    lv_style_set_bg_opa(&hp_data->bottom_panel_style, LV_OPA_50);
-    lv_style_set_pad_left(&hp_data->bottom_panel_style, 10);
-    lv_style_set_pad_right(&hp_data->bottom_panel_style, 10);
-
-    //lv_style_set_shadow_opa(&hp_data->bottom_panel_style, 0);
-    lv_style_set_border_opa(&hp_data->bottom_panel_style, LV_OPA_0);
-    lv_style_set_radius(&hp_data->bottom_panel_style, 22);
-
     /* Layout Init */
     lv_obj_t * bottom_panel = lv_obj_create(hp_data->def_scr);
     lv_obj_set_size(bottom_panel,  LV_PCT(70), 80);
-    lv_obj_add_style(bottom_panel, &hp_data->bottom_panel_style, 0);
+    lv_obj_add_style(bottom_panel, &hp_data->bottom_panel_style, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_add_style(bottom_panel, &hp_data->bottom_scrollbar_style, LV_PART_SCROLLBAR);
     lv_obj_set_layout(bottom_panel, LV_LAYOUT_FLEX);
     //lv_obj_set_style_base_dir(bottom_panel, LV_BASE_DIR_RTL, 0);
     lv_obj_set_flex_flow(bottom_panel, LV_FLEX_FLOW_ROW);
@@ -282,10 +303,12 @@ int gui_homepage_init(GUI_HOMEPAGE_T *hp_data, lv_indev_t *key_indev)
 
 	lv_obj_t * img_bg;
 	img_bg = lv_img_create(hp_data->def_scr);
+	lv_obj_clear_flag(img_bg, LV_OBJ_FLAG_SCROLLABLE);
 	lv_img_set_src(img_bg, "/home/.sys/wallpaper/bg1.png");
+    lv_obj_add_style(img_bg, &hp_data->bottom_scrollbar_style, LV_PART_SCROLLBAR);
 	lv_obj_move_background(img_bg);  // 将背景移动到后台
 
-	dr = opendir("/home/rom");
+	dr = opendir(ROM_PATH);
 	if (dr == NULL)  // opendir returns NULL if couldn't open directory
     {
         printf("Could not open current directory!\n");
@@ -306,16 +329,19 @@ int gui_homepage_init(GUI_HOMEPAGE_T *hp_data, lv_indev_t *key_indev)
 		lv_obj_set_size(btn_icon, 256, 240);
 	    lv_obj_add_event_cb(btn_icon, event_clicked_handler, LV_EVENT_CLICKED, hp_data);
 	    lv_obj_add_event_cb(btn_icon, event_key_handler, LV_EVENT_KEY, hp_data);
-	    lv_obj_add_style(btn_icon, &hp_data->icon_style, 0);
+	    lv_obj_add_style(btn_icon, &hp_data->icon_style, LV_PART_MAIN|LV_STATE_DEFAULT);
 		lv_obj_add_flag(btn_icon, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
 		lv_group_add_obj(hp_data->game_grp, btn_icon);
 		
 		label = lv_label_create(btn_icon); //创建名称
 		lv_label_set_text(label, de->d_name);
 		lv_obj_set_align(label, LV_ALIGN_OUT_BOTTOM_MID);
+//		lv_obj_move_foreground(label);
 		
 		strip_ext(de->d_name);
-		sprintf(file_name, "/home/rom/%s.png", de->d_name);
+		sprintf(file_name, "%s%s.png", ROM_PATH, de->d_name);
+		if(access(file_name, F_OK) == -1)
+			sprintf(file_name, "%s", SYS_ICON_LOAD_FAILED);
 		img_icon = lv_img_create(btn_icon);
 		lv_img_set_src(img_icon, file_name);
 		gui_img_set_zoom(img_icon, 256, 240);
@@ -326,9 +352,14 @@ int gui_homepage_init(GUI_HOMEPAGE_T *hp_data, lv_indev_t *key_indev)
 
 	lv_group_set_editing(hp_data->game_grp,false);//导航模式
 	lv_group_set_wrap(hp_data->game_grp, true);
-//	lv_group_focus_obj(btn_icon);
 
-
+	for (i = 0; i < sizeof(bottom_menu_png_list)/sizeof(bottom_menu_png_list[0]); ++i)
+	{
+		img_icon = lv_img_create(bottom_panel);
+		sprintf(file_name, "%s%s", SYS_ICON_PATH, bottom_menu_png_list[i]);
+		lv_img_set_src(img_icon, file_name);
+		gui_img_set_zoom(img_icon, 80, 80);
+	}
 	return ret;
 }
 
