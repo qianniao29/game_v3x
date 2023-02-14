@@ -237,7 +237,7 @@ void lv_example_ffmpeg(void)
 
 uint32_t *nes_fbp = 0;
 
-int init_nes_fb()
+int init_nes_fb(void)
 {
 	int fp=0;
 	struct fb_var_screeninfo vinfo;
@@ -273,6 +273,10 @@ int init_nes_fb()
 	return 0;
 }
 
+void nes_fb_clear(uint8_t color)
+{
+	memset(nes_fbp, color, 480*800*4);
+}
 
 int main(int argc, char **argv)
 {

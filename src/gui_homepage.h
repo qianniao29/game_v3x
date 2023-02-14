@@ -30,18 +30,19 @@ extern "C"{
 #define ROM_NAME_MAX    128
 
 typedef struct {
+	lv_indev_t *key_indev;
     lv_group_t *game_grp;
     lv_group_t *bottom_grp;
+    lv_group_t *app_grp;
     lv_style_t cont_style;              // 中间图标区域，容器的样式
     lv_style_t icon_style;              // 中间图标区域，容器中的图标的样式
     lv_style_t bottom_panel_style;  // 底部容器的样式
-    lv_style_t bottom_scrollbar_style;
     lv_obj_t * game_scr;
     lv_obj_t * def_scr;
     char       rom_path[ROM_NAME_MAX];
 } GUI_HOMEPAGE_T;
 
-extern int gui_homepage_init(GUI_HOMEPAGE_T *hp_data, lv_indev_t *key_indev);
+extern int gui_homepage_init(GUI_HOMEPAGE_T *hp_data);
 
 #ifdef __cplusplus
 #if __cplusplus

@@ -29,6 +29,11 @@ extern "C"{
 
 #include "gui_homepage.h"
 
+#define HOME_PATH       ("/home/")
+#define SYS_ICON_PATH   ("/home/.sys/icon/")
+#define SYS_BG_PATH     ("/home/.sys/wallpaper/")
+#define ROM_PATH        ("/home/rom/")
+#define SYS_ICON_LOAD_FAILED   ("/home/.sys/icon/loadfailed.png")
 
 typedef struct {
 	lv_color_t		   *canvas_buf;

@@ -59,9 +59,9 @@ int gui_init()
     lv_indev_drv_init(&gui_data.indev_drv);      /*Basic initialization*/
     gui_data.indev_drv.type = LV_INDEV_TYPE_KEYPAD;
     gui_data.indev_drv.read_cb = evdev_read;
-    lv_indev_t *key_indev = lv_indev_drv_register(&gui_data.indev_drv);
+    gui_data.hp_data.key_indev = lv_indev_drv_register(&gui_data.indev_drv);
 
-	gui_homepage_init(&gui_data.hp_data, key_indev);
+	gui_homepage_init(&gui_data.hp_data);
 
 	return ret;
 }
